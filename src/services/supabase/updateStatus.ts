@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/app/lib/supabaseAdmin';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function updateResearchStatus(status: string, docId: string) {
     try {

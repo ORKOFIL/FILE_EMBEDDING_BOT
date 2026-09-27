@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { researchQueue, RESEARCH_QUEUE_NAME } from '@/app/lib/queue';
-import { supabaseAdmin } from '@/app/lib/supabaseAdmin';
+import { researchQueue, RESEARCH_QUEUE_NAME } from '@/lib/queue';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function POST(request: Request) {
     try {

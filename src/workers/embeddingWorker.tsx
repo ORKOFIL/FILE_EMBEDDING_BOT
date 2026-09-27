@@ -1,10 +1,10 @@
 import { Worker } from 'bullmq';
-import { redisConnection, RESEARCH_QUEUE_NAME } from '@/app/lib/queue';
+import { redisConnection, RESEARCH_QUEUE_NAME } from '@/lib/queue';
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { Document } from "@langchain/core/documents";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { supabaseAdmin } from '@/app/lib/supabaseAdmin';
-import { updateResearchStatus } from '@/app/services/supabase/updateStatus'
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { updateResearchStatus } from '@/services/supabase/updateStatus'
 import OpenAI from "openai";
 
 console.log('🚀 Скрипт воркера запущено, підключаємося до Redis...');
