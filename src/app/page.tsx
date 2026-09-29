@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   X,
 } from 'lucide-react';
+import { GET } from './api/getFiles/route';
 
 interface DocumentItem {
   id: string;
@@ -24,8 +25,8 @@ interface DocumentItem {
 
 interface Message {
   id: string;
-  sender: 'user' | 'assistant';
-  text: string;
+  role: 'user' | 'assistant';
+  content: string;
   sourceDoc?: string;
 }
 
@@ -44,27 +45,17 @@ export default function MinimalRAGDashboard() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'm1',
-      sender: 'assistant',
-      text: 'Вітаю. Я готовий відповідати на питання за вашою базою знань.',
-    },
-    {
-      id: 'm2',
-      sender: 'user',
-      text: 'Які умови повернення коштів для річної передплати?',
-    },
-    {
-      id: 'm3',
-      sender: 'assistant',
-      text: 'Згідно з refund_policy_v2.pdf, повернення можливе протягом перших 14 днів у повному обсязі, якщо обсяг використаних API-кредитів не перевищує 5%.',
-      sourceDoc: 'refund_policy_v2.pdf',
+      role: 'assistant',
+      content: 'Вітаю. Я виберіть документ.',
     },
   ]);
   const [inputMessage, setInputMessage] = useState('');
 
-  // --- Стани та рефи для завантаження файлу ---
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [currentBot, setCurrentBot] = useState({ name: 'ВИБЕРІТЬ ДОКУМЕНТ', id: '' });
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -151,31 +142,55 @@ export default function MinimalRAGDashboard() {
     }
   };
 
-  const handleDocClick = (docName: string) => {
-    console.log("Вибрано документ:", docName);
+  const handleDocClick = (docName: string, docId: string) => {
+    setCurrentBot({ name: docName, id: docId });
+    console.log(`${docName} + ${docId}`)
+    setMessages([{
+      id: 'm1',
+      role: 'assistant',
+      content: `Вітаю. Я готовий відповідати на питання за вашою базою знань документа '${docName}'.`,
+    }])
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
     const newMsg: Message = {
       id: Date.now().toString(),
-      sender: 'user',
-      text: inputMessage,
+      role: 'user',
+      content: inputMessage,
     };
     setMessages((prev) => [...prev, newMsg]);
     setInputMessage('');
 
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          sender: 'assistant',
-          text: 'Аналізую векторні ембеддінги... За вашим запитом знайдено 2 релевантні фрагменти.',
-          sourceDoc: 'saas_pricing_plans.md',
-        },
-      ]);
-    }, 600);
+    try {
+      const response = await fetch(`/api/getUserResponse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentBot.id, content: newMsg.content })
+      });
+      const data = await response.json();
+      const responseMsg: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: data.data.answer,
+      };
+      setMessages((prev) => [...prev, responseMsg]);
+    } catch (error) {
+      console.error('Помилка під час надсилання повідомлення:', error);
+    }
+
+    // setTimeout(() => {
+    //   setMessages((prev) => [
+    //     ...prev,
+    //     {
+    //       id: (Date.now() + 1).toString(),
+    //       role: 'assistant',
+    //       content: 'Аналізую векторні ембеддінги... За вашим запитом знайдено 2 релевантні фрагменти.',
+    //       sourceDoc: 'saas_pricing_plans.md',
+    //     },
+    //   ]);
+    // }, 600);
+
   };
 
   const filteredDocs = documents.filter((doc) =>
@@ -309,7 +324,7 @@ export default function MinimalRAGDashboard() {
               {filteredDocs.map((doc) => (
                 <div
                   key={doc.id}
-                  onClick={() => handleDocClick(doc.name)}
+                  onClick={() => handleDocClick(doc.name, doc.id)}
                   className="group flex items-center justify-between p-2.5 rounded-lg border border-transparent hover:border-zinc-200 hover:bg-zinc-50 transition-all cursor-pointer select-none"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -363,9 +378,8 @@ export default function MinimalRAGDashboard() {
           {/* Header */}
           <header className="h-14 px-5 border-b border-zinc-200/80 bg-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-zinc-600" />
               <span className="font-medium text-sm text-zinc-900">
-                AI Помічник
+                {currentBot.name}
               </span>
             </div>
           </header>
@@ -375,26 +389,16 @@ export default function MinimalRAGDashboard() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'
+                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'
                   }`}
               >
                 <div
-                  className={`max-w-[85%] text-xs leading-relaxed rounded-2xl px-3.5 py-2.5 ${msg.sender === 'user'
+                  className={`max-w-[85%] text-xs leading-relaxed rounded-2xl px-3.5 py-2.5 ${msg.role === 'user'
                     ? 'bg-zinc-900 text-zinc-100 rounded-br-none'
                     : 'bg-white border border-zinc-200/80 text-zinc-800 shadow-sm rounded-bl-none'
                     }`}
                 >
-                  {msg.text}
-
-                  {msg.sourceDoc && (
-                    <div className="mt-2 pt-2 border-t border-zinc-100 flex items-center gap-1 text-[10px] text-zinc-500">
-                      <span>Джерело:</span>
-                      <span className="font-medium text-zinc-700 underline flex items-center gap-0.5">
-                        {msg.sourceDoc}
-                        <ArrowUpRight className="w-2.5 h-2.5" />
-                      </span>
-                    </div>
-                  )}
+                  {msg.content}
                 </div>
               </div>
             ))}
@@ -405,15 +409,15 @@ export default function MinimalRAGDashboard() {
             <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus-within:border-zinc-400 transition-all">
               <input
                 type="text"
-                placeholder="Заставте питання по завантажених документах..."
+                placeholder="Заставте питання по завантаженому документу..."
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                onKeyDown={(e) => currentBot.name !== 'ВИБЕРІТЬ ДОКУМЕНТ' && e.key === 'Enter' && handleSendMessage()}
                 className="flex-1 text-xs bg-transparent px-2 focus:outline-none text-zinc-800 placeholder-zinc-400"
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!inputMessage.trim()}
+                disabled={!inputMessage.trim() || currentBot.name == 'ВИБЕРІТЬ ДОКУМЕНТ'}
                 className="p-1.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 text-white rounded-md transition-all"
               >
                 <Send className="w-3.5 h-3.5" />
