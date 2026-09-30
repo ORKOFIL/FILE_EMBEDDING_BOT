@@ -5,10 +5,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     try {
         const param = await params
         const taskId = param.id
-        console.log(taskId)
+
+        
         const { data, error } = await supabaseAdmin
             .from('documents')
-            .select('status')
+            .delete()
             .eq('document_id', taskId)
             .select()
 
@@ -19,7 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             )
         }
         
-        return NextResponse.json({ output: data![0].status })
+        return NextResponse.json({ status: 201 })
     } catch (error) {
         return NextResponse.json(
             { error: `Failed to process request: ${error}` },

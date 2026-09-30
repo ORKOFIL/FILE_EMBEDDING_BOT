@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "worker:embedding": "tsx --env-file=.env.local src/app/services/workers/embeddingWorker.tsx",
+    "worker:embedding": "tsx --env-file=.env.local src/workers/embeddingWorker.tsx",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

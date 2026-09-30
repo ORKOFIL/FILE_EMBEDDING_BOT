@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
         const { data: matchedChunks, error } = await supabaseAdmin.rpc("match_documents", {
             query_embedding: queryEmbedding,
-            match_threshold: 0.3,
+            match_threshold: 0.2,
             match_count: 3,
             target_table: "document_chunks",
             target_document_id: id

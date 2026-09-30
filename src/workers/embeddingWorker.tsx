@@ -33,8 +33,8 @@ const worker = new Worker(RESEARCH_QUEUE_NAME, async (job) => {
 
     updateResearchStatus('[3/6] Splitting text', documentId)
     const textSplitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 200,
+        chunkSize: 1200,
+        chunkOverlap: 250,
     });
     const stringChunks = await textSplitter.splitText(allText);
 

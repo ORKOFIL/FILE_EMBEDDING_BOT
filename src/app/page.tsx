@@ -25,7 +25,7 @@ interface DocumentItem {
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'temporary';
   content: string;
   sourceDoc?: string;
 }
@@ -46,7 +46,7 @@ export default function MinimalRAGDashboard() {
     {
       id: 'm1',
       role: 'assistant',
-      content: 'Вітаю. Я виберіть документ.',
+      content: 'Вітаю. Виберіть документ.',
     },
   ]);
   const [inputMessage, setInputMessage] = useState('');
@@ -117,7 +117,6 @@ export default function MinimalRAGDashboard() {
       });
       const data = await response.json();
       console.log(data.data.docId)
-      startPolling(`/api/getStatus/${data.data.docId}`, 1000, data.data.docId);
       const fileSizeFormatted =
         selectedFile.size > 1024 * 1024
           ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`
@@ -128,10 +127,11 @@ export default function MinimalRAGDashboard() {
         name: selectedFile.name,
         size: fileSizeFormatted,
         updatedAt: 'Щойно',
-        status: 'processing',
+        status: '[1/6] Uploading file',
       };
-
       setDocuments((prev) => [newDoc, ...prev]);
+
+      startPolling(`/api/getStatus/${data.data.docId}`, 1000, data.data.docId);
 
       handleClearFile();
     } catch (error) {
@@ -143,13 +143,20 @@ export default function MinimalRAGDashboard() {
   };
 
   const handleDocClick = (docName: string, docId: string) => {
-    setCurrentBot({ name: docName, id: docId });
-    console.log(`${docName} + ${docId}`)
-    setMessages([{
-      id: 'm1',
-      role: 'assistant',
-      content: `Вітаю. Я готовий відповідати на питання за вашою базою знань документа '${docName}'.`,
-    }])
+    if (currentBot.id != docId) {
+      setCurrentBot({ name: docName, id: docId });
+      console.log(`${docName} + ${docId}`)
+      setMessages([{
+        id: 'm1',
+        role: 'assistant',
+        content: `Вітаю. Я готовий відповідати на питання за вашою базою знань документа '${docName}'.`,
+      }])
+    }
+  };
+
+  const handleDocDelete = async (docId: string) => {
+    setDocuments(documents.filter((d) => d.id !== docId));
+    await fetch(`/api/deleteFile/${docId}`)
   };
 
   const handleSendMessage = async () => {
@@ -163,6 +170,12 @@ export default function MinimalRAGDashboard() {
     setInputMessage('');
 
     try {
+      const temporaryMsg: Message = {
+        id: 'temporary',
+        role: 'temporary',
+        content: '...',
+      };
+      setMessages((prev) => [...prev, temporaryMsg]);
       const response = await fetch(`/api/getUserResponse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,23 +187,11 @@ export default function MinimalRAGDashboard() {
         role: 'assistant',
         content: data.data.answer,
       };
+      setMessages((prevMessages) => prevMessages.filter((message) => message.id !== 'temporary'));
       setMessages((prev) => [...prev, responseMsg]);
     } catch (error) {
       console.error('Помилка під час надсилання повідомлення:', error);
     }
-
-    // setTimeout(() => {
-    //   setMessages((prev) => [
-    //     ...prev,
-    //     {
-    //       id: (Date.now() + 1).toString(),
-    //       role: 'assistant',
-    //       content: 'Аналізую векторні ембеддінги... За вашим запитом знайдено 2 релевантні фрагменти.',
-    //       sourceDoc: 'saas_pricing_plans.md',
-    //     },
-    //   ]);
-    // }, 600);
-
   };
 
   const filteredDocs = documents.filter((doc) =>
@@ -360,7 +361,7 @@ export default function MinimalRAGDashboard() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDocuments(documents.filter((d) => d.id !== doc.id));
+                        handleDocDelete(doc.id);
                       }}
                       className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-zinc-600 transition-all"
                     >
