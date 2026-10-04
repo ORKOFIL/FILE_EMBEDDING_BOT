@@ -20,7 +20,13 @@ async function startPolling(url: string, intervalMs = 3000, docId: string, setDo
                 )
             );
 
-            if (data.output == '[6/6] Finished' || data.output == 'ERROR') {
+            if (data.output == '[6/6] Finished') {
+                break;
+            } else if (data.output == 'ERROR') {
+                const response = await fetch(`/api/getErrorMessage/${docId}`);
+                const data = await response.json();
+                console.log(docId)
+                alert(`[ERROR]: ${data.output}`);
                 break;
             }
         } catch (error) {
@@ -61,7 +67,7 @@ export async function fileUpload(selectedFile: File | null, setIsUploading: (isU
         setDocuments((prev) => [newDoc, ...prev]);
 
         startPolling(`/api/getStatus/${data.data.docId}`, 1000, data.data.docId, setDocuments);
-        
+
         setSelectedFile(null);
     } catch (error) {
         console.error('Помилка під час відправки файлу:', error);

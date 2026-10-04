@@ -10,42 +10,54 @@ import OpenAI from "openai";
 console.log('🚀 Скрипт воркера запущено, підключаємося до Redis...');
 const worker = new Worker(RESEARCH_QUEUE_NAME, async (job) => {
     console.log('[WORKER] started job')
-    const { fileBase64, fileType, fileName, documentId } = job.data;
-    const buffer = Buffer.from(fileBase64, 'base64');
-    console.log(`AFTER WORKER ${documentId}`)
-    updateResearchStatus('[2/6] Extracting text', documentId)
-    let allText = '';
-    if (fileType.trim() == 'application/pdf') {
-        const blob = new Blob([buffer], { type: fileType || 'application/pdf' });
-        const loader = new PDFLoader(blob);
-        const docs: Document[] = await loader.load();
-        console.log(`Завантажено сторінок: ${docs.length}`);
 
-        if (docs.length > 0) {
-            for (let i = 0; i < docs.length; i++) {
-                allText = allText + docs[i].pageContent;
-            }
-        }
-    } else if (fileType.trim() == 'text/plain') {
-        const text = buffer.toString('utf-8');
-        allText = text
+    const { fileName, documentId } = job.data;
+
+    const { data: file, error } = await supabaseAdmin
+        .storage
+        .from('documents')
+        .download(`public/${documentId}`)
+    if (error) {
+        console.error("❌ Помилка збереження файлу в Supabase:", error);
+        throw error;
     }
 
-    updateResearchStatus('[3/6] Splitting text', documentId)
+    await updateResearchStatus('[2/6] Extracting text', documentId)
+    let allText = '';
+    if (file?.type.trim() == 'application/pdf') {
+        const loader = new PDFLoader(file, {
+            splitPages: true,
+        });
+        const docs: Document[] = await loader.load();
+        console.log(`Завантажено сторінок: ${docs.length}`);
+        allText = docs.map((doc) => doc.pageContent).join('\n\n');
+    } else if (file?.type.trim() == 'text/plain') {
+        allText = await file.text();
+    }
+
+    if (!allText.trim()) {
+        throw new Error('Не вдалося витягти текст з документа');
+    }
+
+    await updateResearchStatus('[3/6] Splitting text', documentId)
     const textSplitter = new RecursiveCharacterTextSplitter({
         chunkSize: 1200,
         chunkOverlap: 250,
     });
     const stringChunks = await textSplitter.splitText(allText);
 
-    updateResearchStatus('[4/6] Making embedding', documentId)
+    if (stringChunks.length === 0) {
+        throw new Error('Отримано 0 чанків після розділення тексту');
+    }
+
+    await updateResearchStatus('[4/6] Making embedding', documentId)
     const client = new OpenAI();
     const response = await client.embeddings.create({
         model: "text-embedding-3-small",
         input: stringChunks,
     });
 
-    updateResearchStatus('[5/6] Pushing embeddings into database', documentId)
+    await updateResearchStatus('[5/6] Pushing embeddings into database', documentId)
     const infoToInsert = stringChunks.map((chunkText, index) => ({
         document_id: documentId,
         file_name: fileName,
@@ -62,13 +74,24 @@ const worker = new Worker(RESEARCH_QUEUE_NAME, async (job) => {
         console.error("❌ Помилка збереження в Supabase:", embeddingerror);
         throw embeddingerror;
     }
-    updateResearchStatus('[6/6] Finished', documentId)
+    await updateResearchStatus('[6/6] Finished', documentId)
 }, { connection: redisConnection })
 
 worker.on('ready', () => {
     console.log('✅ Воркер успішно підключився до Redis і чекає на завдання!');
 });
 
-worker.on('failed', (job, err) => {
-    
+worker.on('failed', async (job, err) => {
+    await updateResearchStatus('ERROR', job?.data.documentId)
+    try {
+        const { error: updateError } = await supabaseAdmin
+            .from('documents')
+            .update({ error_message: err.message })
+            .eq('document_id', job?.data.documentId)
+        if (updateError) {
+            console.error(`Не вдалося оновити error_message у БД: ${updateError.message}`);
+        }
+    } catch (error) {
+        console.error(`Оброблення файлу перервано: ${error}`);
+    }
 })

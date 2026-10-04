@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "worker:embedding": "tsx --env-file=.env.local src/workers/embeddingWorker.tsx",
+    "worker:embedding": "tsx --env-file=.env.local src/workers/embeddingWorker.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -26,6 +26,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

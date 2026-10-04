@@ -3,6 +3,8 @@ import { researchQueue, RESEARCH_QUEUE_NAME } from '@/lib/queue';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function POST(request: Request) {
+    let documentId: string | null = null;
+    let isFileUploaded = false;
     try {
         const formData = await request.formData();
         const file = formData.get('file') as File | null;
@@ -13,10 +15,7 @@ export async function POST(request: Request) {
 
         console.log('Отримано файл:', file.name, 'Тип:', file.type, 'Розмір:', file.size);
 
-        const arrayBuffer = await file.arrayBuffer();
-        const base64File = Buffer.from(arrayBuffer).toString('base64');
-
-        const documentId = crypto.randomUUID()
+        documentId = crypto.randomUUID()
         const { error: mainerror } = await supabaseAdmin
             .from('documents')
             .insert({
@@ -30,11 +29,19 @@ export async function POST(request: Request) {
             throw mainerror;
         }
 
-        console.log(`BEFORE WORKER ${documentId}`)
-        const job = await researchQueue.add(RESEARCH_QUEUE_NAME, {
+        const { error: uploadFileError } = await supabaseAdmin
+            .storage
+            .from('documents')
+            .upload(`public/${documentId}`, file)
+        if (uploadFileError) {
+            console.error("❌ Помилка збереження файлу в Supabase:", uploadFileError);
+            throw uploadFileError;
+        }
+
+        isFileUploaded = true;
+
+        await researchQueue.add(RESEARCH_QUEUE_NAME, {
             fileName: file.name,
-            fileType: file.type,
-            fileBase64: base64File,
             documentId: documentId
         }, {
             attempts: 3,
@@ -45,6 +52,24 @@ export async function POST(request: Request) {
             { status: 201 }
         )
     } catch (error) {
+        const errorMessage = error || 'помилка при обробці запиту';
+
+        if (documentId) {
+            await supabaseAdmin
+                .from('documents')
+                .update({
+                    status: 'ERROR',
+                    error_message: errorMessage
+                })
+                .eq('document_id', documentId);
+
+            if (isFileUploaded) {
+                await supabaseAdmin
+                    .storage
+                    .from('documents')
+                    .remove([`public/${documentId}`]);
+            }
+        }
         return NextResponse.json(
             { error: `Failed to process request: ${error}` },
             { status: 500 }
