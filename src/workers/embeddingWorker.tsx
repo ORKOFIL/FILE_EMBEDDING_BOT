@@ -68,3 +68,7 @@ const worker = new Worker(RESEARCH_QUEUE_NAME, async (job) => {
 worker.on('ready', () => {
     console.log('✅ Воркер успішно підключився до Redis і чекає на завдання!');
 });
+
+worker.on('failed', (job, err) => {
+    
+})
