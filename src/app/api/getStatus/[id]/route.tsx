@@ -1,25 +1,24 @@
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
         const param = await params
         const taskId = param.id
-        console.log(taskId)
-        const { data, error } = await supabaseAdmin
-            .from('documents')
-            .select('status')
-            .eq('document_id', taskId)
-            .select()
 
-        if (error || !data) {
+        const doc = await prisma.documents.findUnique({
+            where: { document_id: taskId },
+            select: { status: true },
+        })
+
+        if (!doc) {
             return NextResponse.json(
-                { error: `Failed to process request: ${error}` },
-                { status: 500 }
+                { error: 'Document not found' },
+                { status: 404 }
             )
         }
-        
-        return NextResponse.json({ output: data![0].status })
+
+        return NextResponse.json({ output: doc.status })
     } catch (error) {
         return NextResponse.json(
             { error: `Failed to process request: ${error}` },

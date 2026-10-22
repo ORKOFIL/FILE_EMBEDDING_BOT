@@ -3,8 +3,8 @@ import { redisConnection, RESEARCH_QUEUE_NAME } from '@/lib/queue';
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { Document } from "@langchain/core/documents";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { updateResearchStatus } from '@/services/supabase/updateStatus'
+import { prisma } from '@/lib/prisma';
+import { updateResearchStatus } from '@/services/db/updateStatus'
 import OpenAI from "openai";
 
 console.log('🚀 Скрипт воркера запущено, підключаємося до Redis...');
@@ -13,14 +13,13 @@ const worker = new Worker(RESEARCH_QUEUE_NAME, async (job) => {
 
     const { fileName, documentId } = job.data;
 
-    const { data: file, error } = await supabaseAdmin
-        .storage
-        .from('documents')
-        .download(`public/${documentId}`)
-    if (error) {
-        console.error("❌ Помилка збереження файлу в Supabase:", error);
-        throw error;
+    const stored = await prisma.document_files.findUnique({
+        where: { document_id: documentId },
+    });
+    if (!stored) {
+        throw new Error('Файл не знайдено в базі даних');
     }
+    const file = new Blob([new Uint8Array(stored.data)], { type: stored.mime_type });
 
     await updateResearchStatus('[2/6] Extracting text', documentId)
     let allText = '';
@@ -41,7 +40,7 @@ const worker = new Worker(RESEARCH_QUEUE_NAME, async (job) => {
 
     await updateResearchStatus('[3/6] Splitting text', documentId)
     const textSplitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1200,
+        chunkSize: 1000,
         chunkOverlap: 250,
     });
     const stringChunks = await textSplitter.splitText(allText);
@@ -52,28 +51,37 @@ const worker = new Worker(RESEARCH_QUEUE_NAME, async (job) => {
 
     await updateResearchStatus('[4/6] Making embedding', documentId)
     const client = new OpenAI();
+
+    const summaryResponse = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.2,
+        messages: [
+            {
+                role: "system",
+                content: 'Зроби структуроване резюме документа (200-300 слів) тією ж мовою, що й документ: тема, ключові поняття, основні факти, висновки, учасники/терміни. Не вигадуй нічого поза текстом.',
+            },
+            { role: "user", content: allText.slice(0, 40000) },
+        ],
+    });
+    const summary = summaryResponse.choices[0].message.content?.trim() || '';
+
+    const entries = stringChunks.map((content, index) => ({ content, index, isSummary: false }));
+    if (summary) entries.push({ content: summary, index: -1, isSummary: true });
+
     const response = await client.embeddings.create({
         model: "text-embedding-3-small",
-        input: stringChunks,
+        input: entries.map((e) => `Документ: ${fileName}\n${e.content}`),
     });
 
     await updateResearchStatus('[5/6] Pushing embeddings into database', documentId)
-    const infoToInsert = stringChunks.map((chunkText, index) => ({
-        document_id: documentId,
-        file_name: fileName,
-        chunk_index: index,
-        content: chunkText,
-        embedding: response.data[index].embedding
-    }))
-
-    const { error: embeddingerror } = await supabaseAdmin
-        .from('document_chunks')
-        .insert(infoToInsert)
-
-    if (embeddingerror) {
-        console.error("❌ Помилка збереження в Supabase:", embeddingerror);
-        throw embeddingerror;
-    }
+    await prisma.$transaction(
+        entries.map((entry, i) => {
+            const vector = `[${response.data[i].embedding.join(',')}]`;
+            return prisma.$executeRaw`
+                INSERT INTO document_chunks (document_id, file_name, chunk_index, content, embedding, is_summary)
+                VALUES (${documentId}::uuid, ${fileName}, ${entry.index}, ${entry.content}, ${vector}::vector, ${entry.isSummary})`;
+        })
+    );
     await updateResearchStatus('[6/6] Finished', documentId)
 }, { connection: redisConnection })
 
@@ -84,13 +92,10 @@ worker.on('ready', () => {
 worker.on('failed', async (job, err) => {
     await updateResearchStatus('ERROR', job?.data.documentId)
     try {
-        const { error: updateError } = await supabaseAdmin
-            .from('documents')
-            .update({ error_message: err.message })
-            .eq('document_id', job?.data.documentId)
-        if (updateError) {
-            console.error(`Не вдалося оновити error_message у БД: ${updateError.message}`);
-        }
+        await prisma.documents.update({
+            where: { document_id: job?.data.documentId },
+            data: { error_message: err.message },
+        });
     } catch (error) {
         console.error(`Оброблення файлу перервано: ${error}`);
     }

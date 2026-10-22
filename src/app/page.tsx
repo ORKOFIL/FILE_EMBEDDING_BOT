@@ -60,7 +60,7 @@ export default function MinimalRAGDashboard() {
   };
 
   const handleSendMessage = async () => {
-    await sendMessage(inputMessage, currentBot, setMessages, setInputMessage);
+    await sendMessage(messages, inputMessage, currentBot, setMessages, setInputMessage);
   }
 
   const filteredDocs = documents.filter((doc) =>

@@ -1,7 +1,7 @@
 import { Message } from '@/types';
 import { Dispatch, SetStateAction } from 'react';
 
-export async function sendMessage(inputMessage: string, currentBot: {name: string, id: string}, setMessages: Dispatch<SetStateAction<Message[]>>, setInputMessage: Dispatch<SetStateAction<string>>) {
+export async function sendMessage(messages: Message[], inputMessage: string, currentBot: {name: string, id: string}, setMessages: Dispatch<SetStateAction<Message[]>>, setInputMessage: Dispatch<SetStateAction<string>>) {
     if (!inputMessage.trim()) return;
     const newMsg: Message = {
         id: Date.now().toString(),
@@ -21,7 +21,14 @@ export async function sendMessage(inputMessage: string, currentBot: {name: strin
         const response = await fetch(`/api/getUserResponse`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: currentBot.id, content: newMsg.content })
+            body: JSON.stringify({
+                id: currentBot.id,
+                content: newMsg.content,
+                history: messages
+                    .filter((m) => m.role === 'user' || m.role === 'assistant')
+                    .slice(-6)
+                    .map((m) => ({ role: m.role, content: m.content })),
+            })
         });
         const data = await response.json();
         const responseMsg: Message = {

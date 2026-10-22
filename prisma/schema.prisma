@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model documents {
+  document_id   String   @id @default(uuid()) @db.Uuid
+  file_name     String
+  size          Int
+  status        String
+  error_message String?
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  file   document_files?
+  chunks document_chunks[]
+}
+
+// Вміст завантажених файлів (замість Supabase Storage)
+model document_files {
+  document_id String    @id @db.Uuid
+  mime_type   String
+  data        Bytes
+  document    documents @relation(fields: [document_id], references: [document_id], onDelete: Cascade)
+}
+
+model document_chunks {
+  id          Int                          @id @default(autoincrement())
+  document_id String                       @db.Uuid
+  file_name   String
+  chunk_index Int
+  content     String
+  embedding   Unsupported("vector(1536)")?
+  // чанк-резюме всього документа (для загальних питань)
+  is_summary  Boolean                      @default(false)
+  // згенерована колонка для повнотекстового пошуку (створюється в міграції)
+  search_vector Unsupported("tsvector")?
+  document    documents                    @relation(fields: [document_id], references: [document_id], onDelete: Cascade)
+
+  @@index([document_id])
+  @@index([search_vector], type: Gin)
+}

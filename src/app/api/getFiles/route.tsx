@@ -1,20 +1,13 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request){
     try {
-        const { data, error } = await supabaseAdmin
-            .from('documents')
-            .select()
+        const data = await prisma.documents.findMany({
+            orderBy: { created_at: 'desc' },
+        });
 
-        if (error || !data) {
-            return NextResponse.json(
-                { error: `Failed to process request: ${error}` },
-                { status: 500 }
-            )
-        }
-        
-        return NextResponse.json({ output: data! })
+        return NextResponse.json({ output: data })
     } catch (error) {
         return NextResponse.json(
             { error: `Failed to process request: ${error}` },
