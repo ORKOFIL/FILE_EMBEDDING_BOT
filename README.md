@@ -1,59 +1,59 @@
-# File Embedding Bot — Chat with Your Documents (RAG)
+# File Embedding Bot — чат з вашими документами (RAG)
 
-A full-stack **Retrieval-Augmented Generation (RAG)** web app. Upload a PDF or TXT file, wait for it to be processed in the background, then ask questions about it in a chat. Answers are grounded in the document, and the model can also draw reasoned conclusions when the answer is not stated word for word.
+Full-stack веб-застосунок на основі **Retrieval-Augmented Generation (RAG)**. Завантажуєте PDF або TXT, чекаєте, поки файл обробиться у фоні, і ставите питання по ньому в чаті. Відповіді спираються на документ, а якщо відповідь не прописана дослівно, модель робить обґрунтовані висновки й прямо про це каже.
 
-## Features
+## Можливості
 
-- Upload `.pdf` and `.txt` documents, list them and delete them
-- Background processing with live status (`[1/6] Uploading` → `[6/6] Finished`) and error reporting
-- Per-document chat with conversation memory (follow-up questions work)
-- Answers that go beyond literal quotes: the model infers from context and says so explicitly
-- Plain-text answers, no Markdown noise
+- Завантаження `.pdf` і `.txt`, перегляд списку та видалення документів
+- Фонова обробка з live-статусом (`[1/6] Uploading` → `[6/6] Finished`) і збереженням помилок
+- Чат по кожному документу з пам'яттю розмови (уточнювальні питання працюють)
+- Відповіді, що виходять за межі дослівних цитат: модель виводить висновки з контексту й позначає їх
+- Відповіді чистим текстом, без Markdown-розмітки
 
-## How it works
+## Як це працює
 
 ```
-Upload ──► Postgres (file + metadata) ──► BullMQ queue (Redis) ──► Worker
-   Worker: extract text → split into chunks → summarize document
-           → create embeddings (OpenAI) → store vectors in pgvector
+Завантаження ──► Postgres (файл + метадані) ──► черга BullMQ (Redis) ──► Воркер
+   Воркер: витяг тексту → розбиття на чанки → резюме документа
+           → ембедінги (OpenAI) → збереження векторів у pgvector
 
-Question ──► rewrite into 3 search queries (uses chat history)
-         ──► hybrid search: vector similarity (pgvector) + full-text (tsvector)
-         ──► merge results with Reciprocal Rank Fusion (RRF)
-         ──► top 8 chunks + document summary ──► LLM ──► answer
+Питання ──► переписування у 3 пошукові запити (з урахуванням історії чату)
+        ──► гібридний пошук: векторна схожість (pgvector) + повнотекстовий (tsvector)
+        ──► злиття результатів через Reciprocal Rank Fusion (RRF)
+        ──► топ-8 чанків + резюме документа ──► LLM ──► відповідь
 ```
 
-Key design decisions:
+Ключові рішення:
 
-- **Hybrid retrieval.** Vector search finds meaning, full-text search finds exact terms, numbers and names. Results are merged with RRF.
-- **Query rewriting.** A short question is expanded into several search queries, which improves recall for vague or conversational questions.
-- **Document summary chunk.** Generated at ingestion time and always sent to the LLM, so broad questions ("what is this document about?") work well.
-- **Async ingestion.** Heavy work runs in a separate worker process, so the UI and API stay fast.
-- **Files stored in PostgreSQL** (`bytea`), so the whole stack is one `docker compose up` with no external storage.
+- **Гібридний пошук.** Векторний пошук знаходить за змістом, повнотекстовий — за точними термінами, числами й іменами. Результати зливаються через RRF.
+- **Переписування запиту.** Коротке питання розгортається в кілька пошукових запитів, що покращує повноту пошуку для розмовних і нечітких питань.
+- **Чанк-резюме документа.** Створюється під час обробки й завжди передається в LLM, тому загальні питання («про що цей документ?») працюють добре.
+- **Асинхронна обробка.** Важка робота виконується в окремому процесі-воркері, тож UI та API лишаються швидкими.
+- **Файли зберігаються в PostgreSQL** (`bytea`), тому весь стек піднімається однією командою `docker compose up` без зовнішніх сховищ.
 
-## Tech stack
+## Стек технологій
 
-| Area | Technology |
+| Напрям | Технології |
 |---|---|
 | Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
-| Backend | Next.js API routes, Node.js worker (`tsx`) |
-| Database | PostgreSQL 16 + **pgvector**, **Prisma** ORM |
-| Queue | BullMQ + Redis |
+| Backend | Next.js API routes, Node.js воркер (`tsx`) |
+| База даних | PostgreSQL 16 + **pgvector**, ORM **Prisma** |
+| Черга | BullMQ + Redis |
 | AI | OpenAI `text-embedding-3-small`, `gpt-4o-mini` |
-| Text processing | LangChain (PDF loader, recursive text splitter) |
-| Infrastructure | Docker Compose |
+| Обробка тексту | LangChain (PDF-завантажувач, recursive text splitter) |
+| Інфраструктура | Docker Compose |
 
-## Getting started
+## Швидкий старт
 
-### Prerequisites
+### Що потрібно мати
 
-- [Node.js](https://nodejs.org/) 20 or newer (22 recommended)
-- [Docker](https://docs.docker.com/get-docker/) with Docker Compose (Docker Desktop on Windows/macOS)
-- An [OpenAI API key](https://platform.openai.com/api-keys) (needs a few cents of credit)
+- [Node.js](https://nodejs.org/) 20 або новіший (рекомендовано 22)
+- [Docker](https://docs.docker.com/get-docker/) з Docker Compose (Docker Desktop на Windows/macOS)
+- [API-ключ OpenAI](https://platform.openai.com/api-keys) (потрібно кілька центів на балансі)
 
-### Installation
+### Встановлення
 
-**1. Clone and install dependencies**
+**1. Клонуйте репозиторій і встановіть залежності**
 
 ```bash
 git clone <repository-url>
@@ -61,78 +61,78 @@ cd FILE_EMBEDDING_BOT
 npm install
 ```
 
-**2. Create the environment file**
+**2. Створіть файл змінних оточення**
 
 ```bash
 cp .env.example .env          # Windows (PowerShell): copy .env.example .env
 ```
 
-Open `.env` and set your key:
+Відкрийте `.env` і вставте свій ключ:
 
 ```env
 OPENAI_API_KEY="sk-..."
 ```
 
-The other values already match the Docker setup, so leave them as they are.
+Решта значень уже відповідає налаштуванням Docker, їх не чіпайте.
 
-**3. Start PostgreSQL and Redis**
+**3. Запустіть PostgreSQL і Redis**
 
 ```bash
 docker compose up -d
 ```
 
-PostgreSQL runs on port `5435` and Redis on `6380`. These are deliberately not the defaults, so they do not clash with a database you may already have installed. Wait a few seconds for the containers to start.
+PostgreSQL працює на порту `5435`, Redis — на `6380`. Це навмисно не стандартні порти, щоб не конфліктувати з базою, яка в вас уже може бути встановлена. Зачекайте кілька секунд, поки контейнери стартують.
 
-**4. Create the database tables**
+**4. Створіть таблиці в базі даних**
 
 ```bash
 npx prisma migrate deploy
 ```
 
-**5. Run the app (two terminals)**
+**5. Запустіть застосунок (у двох терміналах)**
 
-Terminal 1, web app:
+Термінал 1 — веб-застосунок:
 
 ```bash
 npm run dev
 ```
 
-Terminal 2, background worker:
+Термінал 2 — фоновий воркер:
 
 ```bash
 npm run worker:embedding
 ```
 
-**6. Open <http://localhost:3000>**
+**6. Відкрийте <http://localhost:3000>**
 
-Upload a PDF or TXT file, wait until its status is `[6/6] Finished`, select it, and start asking questions.
+Завантажте PDF або TXT, дочекайтеся статусу `[6/6] Finished`, виберіть документ і ставте питання.
 
-### Troubleshooting
+### Якщо щось не працює
 
-| Problem | Fix |
+| Проблема | Рішення |
 |---|---|
-| `port is already allocated` | Change the left-hand port in `docker-compose.yml` and update `DATABASE_URL` / `REDIS_URL` in `.env` to match |
-| Document stays in a `[n/6]` status | The worker is not running. Start `npm run worker:embedding` |
-| Status `ERROR` | Check the worker terminal for the error. Most often `OPENAI_API_KEY` is missing or has no credit |
-| Reset everything | `docker compose down -v` (deletes all data), then repeat steps 3–4 |
+| `port is already allocated` | Змініть ліву частину порту в `docker-compose.yml` і відповідно `DATABASE_URL` / `REDIS_URL` у `.env` |
+| Документ застряг у статусі `[n/6]` | Не запущений воркер. Виконайте `npm run worker:embedding` |
+| Статус `ERROR` | Подивіться помилку в терміналі воркера. Найчастіше немає `OPENAI_API_KEY` або на ньому нема коштів |
+| Скинути все | `docker compose down -v` (видаляє всі дані), потім повторіть кроки 3–4 |
 
-## Project structure
+## Структура проєкту
 
 ```
-prisma/                  Schema and SQL migrations (incl. pgvector and full-text index)
-src/app/api/             REST endpoints: upload, files, status, delete, chat
-src/workers/             Background ingestion worker (BullMQ)
-src/lib/                 Prisma client and queue setup
-src/components/, hooks/  React UI and client logic
+prisma/                  Схема та SQL-міграції (зокрема pgvector і повнотекстовий індекс)
+src/app/api/             REST-ендпоінти: завантаження, список, статус, видалення, чат
+src/workers/             Фоновий воркер обробки документів (BullMQ)
+src/lib/                 Prisma-клієнт і налаштування черги
+src/components/, hooks/  React UI та клієнтська логіка
 docker-compose.yml       PostgreSQL (pgvector) + Redis
 ```
 
-## Useful commands
+## Корисні команди
 
-| Command | Description |
+| Команда | Опис |
 |---|---|
-| `npm run dev` | Start the web app in development mode |
-| `npm run worker:embedding` | Start the ingestion worker |
-| `npm run build && npm start` | Production build and run |
-| `npx prisma studio` | Browse the database in a GUI |
-| `docker compose down` | Stop PostgreSQL and Redis (data is kept) |
+| `npm run dev` | Запуск веб-застосунку в режимі розробки |
+| `npm run worker:embedding` | Запуск воркера обробки документів |
+| `npm run build && npm start` | Production-збірка та запуск |
+| `npx prisma studio` | Перегляд бази даних у графічному інтерфейсі |
+| `docker compose down` | Зупинити PostgreSQL і Redis (дані зберігаються) |
